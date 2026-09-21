@@ -1,5 +1,6 @@
 import { getPat, setPat, clearPat, testPat, bootstrap, loadAssumptions } from './storage.js';
 import { mountAssumptions } from './assumptions.js';
+import { mountAddEdit } from './add-edit.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -22,15 +23,21 @@ export const state = {
 const ROUTES = ['dashboard', 'map', 'add', 'compare', 'assumptions'];
 const DEFAULT_ROUTE = 'dashboard';
 
-function currentRoute() {
+// Hash format: `#name` or `#name/arg` (e.g. `#add/prop_abc123` = edit that property).
+function parseRoute() {
   const hash = window.location.hash.replace(/^#/, '');
-  return ROUTES.includes(hash) ? hash : DEFAULT_ROUTE;
+  if (!hash) return { name: DEFAULT_ROUTE, arg: null };
+  const idx = hash.indexOf('/');
+  const name = idx === -1 ? hash : hash.slice(0, idx);
+  const arg = idx === -1 ? null : hash.slice(idx + 1);
+  if (ROUTES.includes(name)) return { name, arg: arg || null };
+  return { name: DEFAULT_ROUTE, arg: null };
 }
 
-function updateNav(route) {
+function updateNav(routeName) {
   $$('.top-nav .nav-links a').forEach((a) => {
-    a.classList.toggle('active', a.dataset.route === route);
-    if (a.dataset.route === route) {
+    a.classList.toggle('active', a.dataset.route === routeName);
+    if (a.dataset.route === routeName) {
       a.setAttribute('aria-current', 'page');
     } else {
       a.removeAttribute('aria-current');
@@ -39,17 +46,21 @@ function updateNav(route) {
 }
 
 async function renderView() {
-  const route = currentRoute();
-  updateNav(route);
+  const route = parseRoute();
+  updateNav(route.name);
   const container = $('#app-view');
   container.innerHTML = '';
-  container.dataset.view = route;
+  container.dataset.view = route.name;
 
-  if (route === 'assumptions') {
+  if (route.name === 'assumptions') {
     await mountAssumptions(container);
     return;
   }
-  mountStub(container, route);
+  if (route.name === 'add') {
+    await mountAddEdit(container, route.arg);
+    return;
+  }
+  mountStub(container, route.name);
 }
 
 function mountStub(container, route) {
