@@ -67,23 +67,14 @@
     <nav class="top-nav" aria-label="Primary">
       <span class="brand">Property Comparator</span>
       <div class="nav-links">
-        <a class="active" aria-current="page">Dashboard</a>
-        <a class="disabled" aria-disabled="true">Map</a>
-        <a class="disabled" aria-disabled="true">+ Add Property</a>
-        <a class="disabled" aria-disabled="true">Compare</a>
-        <a class="disabled" aria-disabled="true">Assumptions</a>
+        <a href="#dashboard" data-route="dashboard">Dashboard</a>
+        <a href="#map" data-route="map">Map</a>
+        <a href="#add" data-route="add">+ Add Property</a>
+        <a href="#compare" data-route="compare">Compare</a>
+        <a href="#assumptions" data-route="assumptions">Assumptions</a>
       </div>
     </nav>
-    <main class="screen-body">
-      <h2>Setup complete.</h2>
-      <p>Your token is stored in this browser and the data repo is initialized. This shell is a placeholder while the rest of the app is built.</p>
-      <p><strong>What's next in build order:</strong> calc.js and score.js (pure math), then Assumptions screen, Add/Edit Property, Dashboard, Compare, Map, PDF export.</p>
-      <ul>
-        <li>Public code: <code>opoo-em/property-tool</code></li>
-        <li>Private data: <code>opoo-em/property-tool-private</code></li>
-      </ul>
-      <p style="margin-top: 32px;"><button class="btn subtle" id="reset-pat-btn">Reset stored token (log out)</button></p>
-    </main>
+    <main id="app-view" class="screen-body"></main>
   </div>
 </div>
 <script type="module" src="./js/app.js"></script>

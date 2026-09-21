@@ -1,9 +1,89 @@
-import { getPat, setPat, clearPat, testPat, bootstrap } from './storage.js';
+import { getPat, setPat, clearPat, testPat, bootstrap, loadAssumptions } from './storage.js';
+import { mountAssumptions } from './assumptions.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const show = (id) => { const el = document.getElementById(id); if (el) el.hidden = false; };
 const hide = (id) => { const el = document.getElementById(id); if (el) el.hidden = true; };
+
+// --- Shared session state ---
+// Populated once the PAT is validated. Views read from here and dispatch
+// storage.js calls with `state.pat`. `assumptions` and `assumptionsSha`
+// are the last known good server state; a view updates them after
+// successfully writing so subsequent PUTs carry the current sha.
+export const state = {
+  pat: null,
+  assumptions: null,
+  assumptionsSha: null,
+};
+
+// --- Router ---
+
+const ROUTES = ['dashboard', 'map', 'add', 'compare', 'assumptions'];
+const DEFAULT_ROUTE = 'dashboard';
+
+function currentRoute() {
+  const hash = window.location.hash.replace(/^#/, '');
+  return ROUTES.includes(hash) ? hash : DEFAULT_ROUTE;
+}
+
+function updateNav(route) {
+  $$('.top-nav .nav-links a').forEach((a) => {
+    a.classList.toggle('active', a.dataset.route === route);
+    if (a.dataset.route === route) {
+      a.setAttribute('aria-current', 'page');
+    } else {
+      a.removeAttribute('aria-current');
+    }
+  });
+}
+
+async function renderView() {
+  const route = currentRoute();
+  updateNav(route);
+  const container = $('#app-view');
+  container.innerHTML = '';
+  container.dataset.view = route;
+
+  if (route === 'assumptions') {
+    await mountAssumptions(container);
+    return;
+  }
+  mountStub(container, route);
+}
+
+function mountStub(container, route) {
+  const nextLabels = {
+    dashboard: 'Dashboard',
+    map: 'Map',
+    add: 'Add / Edit Property',
+    compare: 'Compare',
+  };
+  container.innerHTML = `
+    <h2>${nextLabels[route] || 'Coming soon'}</h2>
+    <p>This screen hasn't been built yet.</p>
+    <p>Build order from the spec: Assumptions (done) &rarr; Add / Edit Property &rarr; Dashboard &rarr; Compare &rarr; Map &rarr; PDF export.</p>
+    <p style="margin-top: 32px;">
+      <a class="btn subtle" href="#assumptions">Go to Assumptions</a>
+      <button class="btn subtle" id="reset-pat-btn">Reset stored token (log out)</button>
+    </p>
+  `;
+  attachResetButton();
+}
+
+function attachResetButton() {
+  const btn = $('#reset-pat-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    if (confirm('Clear the stored token from this browser and return to setup?')) {
+      clearPat();
+      window.location.hash = '';
+      window.location.reload();
+    }
+  });
+}
+
+// --- Wizard state ---
 
 let wizardStep = 1;
 
@@ -31,10 +111,19 @@ function enterWizard(atStep = 1) {
   renderWizardStep();
 }
 
-function enterApp() {
+async function enterApp() {
   hide('loading');
   hide('wizard');
   show('app-main');
+  // Load assumptions once at app entry; views read from state.
+  try {
+    const { data, sha } = await loadAssumptions(state.pat);
+    state.assumptions = data;
+    state.assumptionsSha = sha;
+  } catch (e) {
+    console.error('Could not load assumptions', e);
+  }
+  await renderView();
 }
 
 async function runPatTest() {
@@ -60,6 +149,7 @@ async function runPatTest() {
     status.textContent = 'Token accepted. Initializing your data repo…';
     const cleanPat = raw.trim();
     setPat(cleanPat);
+    state.pat = cleanPat;
     const { created } = await bootstrap(cleanPat);
     status.className = 'pat-status success';
     status.textContent = created.length
@@ -73,7 +163,7 @@ async function runPatTest() {
   }
 }
 
-function attachHandlers() {
+function attachWizardHandlers() {
   $$('.wizard-step button[data-action="next"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       if (wizardStep < 3) { wizardStep += 1; renderWizardStep(); }
@@ -92,18 +182,13 @@ function attachHandlers() {
   if (input) input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); runPatTest(); }
   });
-
-  const resetBtn = $('#reset-pat-btn');
-  if (resetBtn) resetBtn.addEventListener('click', () => {
-    if (confirm('Clear the stored token from this browser and return to setup?')) {
-      clearPat();
-      window.location.reload();
-    }
-  });
 }
 
+// --- Boot ---
+
 async function boot() {
-  attachHandlers();
+  attachWizardHandlers();
+  window.addEventListener('hashchange', () => { renderView(); });
 
   const existingPat = getPat();
   if (!existingPat) {
@@ -119,10 +204,11 @@ async function boot() {
     showWizardError(`Your stored token was rejected (${result.code}). Please paste a fresh one.`);
     return;
   }
+  state.pat = existingPat;
 
   try {
     await bootstrap(existingPat);
-    enterApp();
+    await enterApp();
   } catch (e) {
     console.error('Bootstrap failed:', e);
     enterWizard(3);
