@@ -157,7 +157,10 @@ export function computeAll(property, assumptions) {
   const state = property.state;
 
   const price = fin.price || 0;
-  const downPayment = fin.down_payment || 0;
+  // Down payment: property override, else global assumption default.
+  const downPayment = fin.down_payment != null
+    ? fin.down_payment
+    : (assumptions.financing?.down_payment_default ?? 140000);
   const loanAmount = Math.max(0, price - downPayment);
 
   // Rate: property-stored base rate + condo overlay (or fall back to global base rate).

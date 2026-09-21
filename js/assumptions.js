@@ -1,5 +1,5 @@
 import { state } from './app.js';
-import { saveAssumptions, seedAssumptions, PLACEHOLDER_NET_INCOME, loadAssumptions } from './storage.js';
+import { saveAssumptions, seedAssumptions, PLACEHOLDER_NET_INCOME, loadAssumptions, migrateAssumptions } from './storage.js';
 
 // --- Section spec ---
 //
@@ -66,6 +66,14 @@ const SECTIONS = [
         default: '+0.25pp',
         range: '+0.125 – +0.375pp',
         source: 'Applied to condo/TH loans only.',
+      },
+      {
+        path: 'financing.down_payment_default',
+        label: 'Default down payment',
+        unit: '$',
+        default: '$140,000',
+        range: '—',
+        source: 'Applied to every property unless a specific property overrides it. Assumed cash on hand for a purchase.',
       },
     ],
   },
@@ -397,7 +405,7 @@ export async function mountAssumptions(container) {
   try {
     const { data, sha } = await loadAssumptions(state.pat);
     if (data) {
-      state.assumptions = data;
+      state.assumptions = migrateAssumptions(data);
       state.assumptionsSha = sha;
     } else {
       state.assumptions = seedAssumptions();

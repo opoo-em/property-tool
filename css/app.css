@@ -383,6 +383,20 @@ code {
   margin-top: 2px;
 }
 .form-row-flag > label:first-child { visibility: hidden; }
+.form-footer-bar {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-2);
+  display: flex;
+  justify-content: flex-end;
+}
+.commute-input-cluster {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.commute-input-cluster .btn { text-decoration: none; }
 .checkbox-inline {
   display: inline-flex;
   align-items: center;

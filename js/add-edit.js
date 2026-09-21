@@ -136,21 +136,36 @@ function applyStateDefaults(working) {
 // --- Renderers ---
 
 function textRow(label, path, working, opts = {}) {
-  const value = getPath(working, path) ?? '';
-  const type = opts.type || 'text';
-  const step = opts.step ? ` step="${opts.step}"` : '';
-  const min = opts.min != null ? ` min="${opts.min}"` : '';
-  const max = opts.max != null ? ` max="${opts.max}"` : '';
+  const rawValue = getPath(working, path);
+  const format = opts.format; // 'money' | undefined
+  let displayValue;
+  if (rawValue == null || rawValue === '') {
+    displayValue = '';
+  } else if (format === 'money' && typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    displayValue = rawValue.toLocaleString('en-US');
+  } else {
+    displayValue = String(rawValue);
+  }
+  // We deliberately render every numeric field as type="text" — the
+  // browser strips commas from <input type="number"> silently, and any
+  // paste like "699,900" comes back as "" (the source of a real Save
+  // regression). coerce() below tolerates commas, dollar signs, and
+  // percent signs when reading back.
+  const wantsNumber = opts.type === 'number';
+  const type = wantsNumber ? 'text' : (opts.type || 'text');
+  const inputmode = opts.inputmode || (wantsNumber ? 'decimal' : '');
+  const inputmodeAttr = inputmode ? ` inputmode="${inputmode}"` : '';
   const placeholder = opts.placeholder ? ` placeholder="${escapeHtml(opts.placeholder)}"` : '';
   const helper = opts.helper ? `<span class="helper">${escapeHtml(opts.helper)}</span>` : '';
   const inputStyle = opts.narrow ? ' style="max-width:120px;"' : '';
-  const dtype = opts.dtype || (type === 'number' ? 'number' : 'text');
+  const dtype = opts.dtype || (wantsNumber ? 'number' : 'string');
+  const dataFormat = format ? ` data-format="${escapeHtml(format)}"` : '';
   return `
     <div class="form-row">
       <label>${escapeHtml(label)}</label>
-      <input type="${type}"${step}${min}${max}${placeholder}${inputStyle}
-             data-path="${escapeHtml(path)}" data-dtype="${escapeHtml(dtype)}"
-             value="${attrVal(value)}">
+      <input type="${type}"${inputmodeAttr}${placeholder}${inputStyle}
+             data-path="${escapeHtml(path)}" data-dtype="${escapeHtml(dtype)}"${dataFormat}
+             value="${attrVal(displayValue)}">
       ${helper}
     </div>
   `;
@@ -228,6 +243,41 @@ function renderMapsUrlHint(hint) {
   return `<div class="form-hint ${hint.type || 'note'}">${escapeHtml(hint.text)}</div>`;
 }
 
+// Commute row with a "Look up in Google Maps" link that opens driving
+// directions in a new tab, prefilled from the property (address or
+// coords, whichever we have) to the anchor location. She reads the drive
+// time in Maps and types it back — this is the honest "outsource the
+// gathering" answer we can ship without a serverless proxy.
+function commuteRow(label, path, working, opts) {
+  const anchor = state.assumptions?.locations?.[opts.anchor];
+  const origin = (working.lat != null && working.lng != null)
+    ? `${working.lat},${working.lng}`
+    : (working.address || '').trim();
+  const dest = anchor?.address ? anchor.address : (anchor?.lat != null ? `${anchor.lat},${anchor.lng}` : '');
+  const canLookUp = !!origin && !!dest;
+  const url = canLookUp
+    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}&travelmode=driving`
+    : null;
+  const value = getPath(working, path);
+  const displayValue = (value == null || value === '') ? '' : String(value);
+  const helper = opts.helper ? `<span class="helper">${escapeHtml(opts.helper)}</span>` : '';
+  const lookupBtn = canLookUp
+    ? `<a class="btn small subtle" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Look up in Google Maps →</a>`
+    : `<span class="helper">Add an address or coordinates above to enable the Look-up link.</span>`;
+  return `
+    <div class="form-row">
+      <label>${escapeHtml(label)}</label>
+      <div class="commute-input-cluster">
+        <input type="text" inputmode="decimal" style="max-width:120px;"
+               data-path="${escapeHtml(path)}" data-dtype="number"
+               value="${attrVal(displayValue)}">
+        ${lookupBtn}
+      </div>
+      ${helper}
+    </div>
+  `;
+}
+
 function renderForm(working, isEdit, opts) {
   const stillGatheringInfo = opts.stillGatheringInfo;
   const mapsUrlHint = opts.mapsUrlHint;
@@ -247,15 +297,19 @@ function renderForm(working, isEdit, opts) {
   // when a price is not yet known. It is not persisted to the property.
   const stillGatheringChecked = stillGatheringInfo ? 'checked' : '';
 
+  const actionBar = (pos) => `
+    <div class="header-actions">
+      <span class="save-status ${escapeHtml(saveStatus || '')}" data-save-status>${escapeHtml(saveMessage || '')}</span>
+      <button type="button" class="btn subtle" data-cancel-btn>Cancel</button>
+      ${isEdit ? '<button type="button" class="btn subtle" data-delete-btn>Delete property</button>' : ''}
+      <button type="button" class="btn primary" data-save-btn>Save</button>
+    </div>
+  `;
+
   return `
     <div class="screen-header">
       <h2>${heading}</h2>
-      <div class="header-actions">
-        <span id="add-edit-save-status" class="save-status ${escapeHtml(saveStatus || '')}">${escapeHtml(saveMessage || '')}</span>
-        <button type="button" class="btn subtle" id="add-edit-cancel-btn">Cancel</button>
-        ${isEdit ? '<button type="button" class="btn subtle" id="add-edit-delete-btn">Delete property</button>' : ''}
-        <button type="button" class="btn primary" id="add-edit-save-btn">Save</button>
-      </div>
+      ${actionBar('top')}
     </div>
 
     <p class="intro-note">Nothing is required except a nickname (plus a price or "still gathering info" if you haven't got the number yet). Everything else can be filled in later.</p>
@@ -268,11 +322,12 @@ function renderForm(working, isEdit, opts) {
         ${textRow('Address', 'address', working)}
         ${textRow('Listing URL', 'listing_url', working, { type: 'url', placeholder: 'https://www.zillow.com/...' })}
         <div class="form-row">
-          <label>Google Maps URL <span class="helper">enables map pin</span></label>
-          <input type="url" data-path="maps_url" data-dtype="string"
+          <label>Location <span class="helper">enables map pin</span></label>
+          <input type="text" data-path="maps_url" data-dtype="string"
                  id="maps-url-input"
-                 placeholder="https://www.google.com/maps/..."
+                 placeholder='e.g. "38.9128, -77.2265" or https://www.google.com/maps/...'
                  value="${attrVal(working.maps_url)}">
+          <span class="helper">Easiest: right-click the spot in Google Maps → click the "lat, lng" line to copy → paste here. A full Maps URL also works.</span>
         </div>
         ${renderMapsUrlHint(mapsUrlHint)}
         ${radioRow('Property type', 'type', working, [
@@ -297,33 +352,33 @@ function renderForm(working, isEdit, opts) {
 
       <div class="form-section">
         <h3>Financial</h3>
-        ${textRow('Asking price', 'financial.price', working, { type: 'number', step: '1000', min: 0 })}
-        ${textRow('Monthly HOA / condo fee', 'financial.hoa_monthly', working, { type: 'number', step: '1', min: 0, helper: '$0 for detached with no HOA' })}
-        ${textRow('Property tax rate (effective, %)', 'financial.property_tax_rate_pct', working, { type: 'number', step: '0.01', min: 0, helper: 'Default: VA 1.12% · MD 1.15% · DC ~0.58% (post-Homestead)' })}
-        ${textRow('Insurance / mo (est.)', 'financial.insurance_monthly', working, { type: 'number', step: '1', min: 0, helper: 'Default: $55 VA/MD condo · $50 DC condo · $120 SFH' })}
-        ${textRow('Down payment', 'financial.down_payment', working, { type: 'number', step: '1000', min: 0 })}
-        ${textRow('Assumed mortgage rate (%)', 'financial.mortgage_rate_pct', working, { type: 'number', step: '0.01', min: 0, helper: 'Leave blank to use the Assumptions default (currently ' + (state.assumptions?.financing?.mortgage_rate_pct ?? '—') + '%). Condo overlay is added automatically.' })}
-        ${isSfh ? textRow('Maintenance override ($/sqft/yr)', 'financial.maintenance_sqft_override', working, { type: 'number', step: '0.01', min: 0, placeholder: 'uses age-tier default', helper: 'Enter a value to override the age-tier default for this property' }) : ''}
+        ${textRow('Asking price', 'financial.price', working, { type: 'number', format: 'money', helper: 'Commas OK — 699,900 or 699900 both work.' })}
+        ${textRow('Monthly HOA / condo fee', 'financial.hoa_monthly', working, { type: 'number', format: 'money', helper: '$0 for detached with no HOA' })}
+        ${textRow('Property tax rate (effective, %)', 'financial.property_tax_rate_pct', working, { type: 'number', helper: 'Default: VA 1.12% · MD 1.15% · DC ~0.58% (post-Homestead)' })}
+        ${textRow('Insurance / mo (est.)', 'financial.insurance_monthly', working, { type: 'number', format: 'money', helper: 'Default: $55 VA/MD condo · $50 DC condo · $120 SFH' })}
+        ${textRow('Assumed mortgage rate (%)', 'financial.mortgage_rate_pct', working, { type: 'number', helper: 'Leave blank to use the Assumptions default (currently ' + (state.assumptions?.financing?.mortgage_rate_pct ?? '—') + '%). Condo overlay is added automatically.' })}
+        ${isSfh ? textRow('Maintenance override ($/sqft/yr)', 'financial.maintenance_sqft_override', working, { type: 'number', placeholder: 'uses age-tier default', helper: 'Enter a value to override the age-tier default for this property' }) : ''}
         ${st === 'DC' ? radioRow('First-time DC buyer?', 'financial.first_time_dc_buyer', working, [
           { value: 'true', label: 'Yes (reduced recordation)', dtype: 'bool' },
           { value: 'false', label: 'No / N/A', dtype: 'bool' },
         ]) : ''}
+        <p class="section-intro"><em>Down payment is set globally on <a href="#assumptions">Assumptions</a> (currently ${escapeHtml('$' + (state.assumptions?.financing?.down_payment_default ?? 140000).toLocaleString('en-US'))}) — one value applies to every property. Change it there to test different scenarios.</em></p>
       </div>
 
       <div class="form-section">
         <h3>Physical</h3>
-        ${textRow('Bedrooms', 'physical.beds', working, { type: 'number', step: '1', min: 0, narrow: true })}
-        ${textRow('Bathrooms', 'physical.baths', working, { type: 'number', step: '0.5', min: 0, narrow: true })}
-        ${textRow('Square feet', 'physical.sqft', working, { type: 'number', step: '10', min: 0 })}
-        ${textRow('Year built', 'physical.year_built', working, { type: 'number', step: '1', min: 1800, max: 2100, narrow: true })}
-        ${isCondoOrTh ? textRow('Floor', 'physical.floor', working, { type: 'number', step: '1', min: 0, narrow: true, helper: 'For condo/TH only' }) : ''}
+        ${textRow('Bedrooms', 'physical.beds', working, { type: 'number', narrow: true })}
+        ${textRow('Bathrooms', 'physical.baths', working, { type: 'number', narrow: true })}
+        ${textRow('Square feet', 'physical.sqft', working, { type: 'number', format: 'money' })}
+        ${textRow('Year built', 'physical.year_built', working, { type: 'number', narrow: true })}
+        ${isCondoOrTh ? textRow('Floor', 'physical.floor', working, { type: 'number', narrow: true, helper: 'For condo/TH only' }) : ''}
         ${selectRow('Outdoor space', 'physical.outdoor_space', working, OUTDOOR_OPTIONS)}
         ${radioRow('Single-level living?', 'physical.single_level', working, [
           { value: 'true', label: 'Yes', dtype: 'bool' },
           { value: 'false', label: 'No (multi-level)', dtype: 'bool' },
           { value: '', label: 'N/A (elevator building)', dtype: 'nullbool' },
         ])}
-        ${textRow('Condition (1–5)', 'physical.condition', working, { type: 'number', step: '1', min: 1, max: 5, narrow: true })}
+        ${textRow('Condition (1–5)', 'physical.condition', working, { type: 'number', narrow: true, helper: '1 = major work needed · 2 = dated throughout, functional · 3 = livable but needs updates (kitchen/bath/floors) · 4 = move-in ready, minor cosmetic possible · 5 = brand new or fully renovated' })}
       </div>
 
       <div class="form-section hard-filters">
@@ -355,9 +410,15 @@ function renderForm(working, isEdit, opts) {
 
       <div class="form-section">
         <h3>Commute &amp; walkability</h3>
-        ${textRow('Drive to Tysons / West Park Dr', 'commute.tysons_minutes_one_way', working, { type: 'number', step: '1', min: 0, narrow: true, helper: 'min · one way, evening peak (from Google Maps)' })}
-        ${textRow('Drive to Aspen Hill', 'commute.aspen_hill_minutes_one_way', working, { type: 'number', step: '1', min: 0, narrow: true, helper: 'min · one way' })}
-        ${textRow('Walk Score (0–100)', 'commute.walk_score', working, { type: 'number', step: '1', min: 0, max: 100, narrow: true, helper: 'Copy from the Zillow listing page' })}
+        ${commuteRow('Drive to Tysons / West Park Dr', 'commute.tysons_minutes_one_way', working, {
+          helper: 'min · one way, morning peak (getting to work). Click "Look up" to open Google Maps prefilled — copy the number back here.',
+          anchor: 'workplace',
+        })}
+        ${commuteRow('Drive to Aspen Hill (visits)', 'commute.aspen_hill_minutes_one_way', working, {
+          helper: 'min · one way, off-peak / non-rush-hour (typical visit time — e.g. Sunday morning, not evening rush).',
+          anchor: 'family',
+        })}
+        ${textRow('Walk Score (0–100)', 'commute.walk_score', working, { type: 'number', narrow: true, helper: 'Copy from the Zillow listing page' })}
         ${radioRow('Near Metro?', 'commute.near_metro', working, [
           { value: 'walkable', label: 'Walkable' },
           { value: 'short_drive', label: 'Short drive' },
@@ -371,6 +432,10 @@ function renderForm(working, isEdit, opts) {
         <p class="section-intro">Last updated: ${working.gut_check?.last_updated ? escapeHtml(new Date(working.gut_check.last_updated).toLocaleString()) : 'not yet rated'}</p>
         ${GUT_CHECK_QUESTIONS.map((q) => starRow(q, working)).join('')}
         ${textareaRow('Notes', 'gut_check.notes', working, { placeholder: 'What stood out? What worried you? What did the neighbors seem like? What did you learn if you visited?' })}
+      </div>
+
+      <div class="form-footer-bar">
+        ${actionBar('bottom')}
       </div>
 
     </form>
@@ -455,24 +520,49 @@ export async function mountAddEdit(container, propertyId) {
   function setSaveState(next, message = '') {
     saveStatus = next;
     saveMessage = message;
-    const el = document.getElementById('add-edit-save-status');
-    if (el) {
+    // Update both the header and footer status pills.
+    container.querySelectorAll('[data-save-status]').forEach((el) => {
       el.className = `save-status ${next}`;
       el.textContent = message;
-    }
+    });
   }
 
   // Coerce an input value string into the type indicated by data-dtype.
+  // Number coercion tolerates commas, dollar signs, percent signs, and
+  // whitespace so "$699,900" and "6.9%" round-trip cleanly.
   function coerce(raw, dtype) {
     if (dtype === 'string') return raw;
     if (dtype === 'bool') return raw === 'true';
     if (dtype === 'nullbool') return raw === '' ? null : raw === 'true';
     if (dtype === 'number') {
-      if (raw == null || raw === '') return null;
-      const n = Number(raw);
+      if (raw == null) return null;
+      const stripped = String(raw).replace(/[$%,\s]/g, '').replace(/^\+/, '');
+      if (stripped === '' || stripped === '-') return null;
+      const n = Number(stripped);
       return Number.isFinite(n) ? n : null;
     }
     return raw;
+  }
+
+  // Read every [data-path] input in the container into `working`. Called
+  // at the top of doSave() so a value the user typed but never blurred
+  // out of doesn't get dropped on the floor by the change-event pipeline.
+  function syncInputsToWorking() {
+    const inputs = container.querySelectorAll('[data-path]');
+    inputs.forEach((el) => {
+      const path = el.dataset.path;
+      const dtype = el.dataset.dtype || 'string';
+      let raw;
+      if (el.type === 'checkbox') raw = el.checked ? 'true' : 'false';
+      else if (el.type === 'radio') {
+        if (!el.checked) return;
+        raw = el.value;
+      } else {
+        raw = el.value;
+      }
+      const value = coerce(raw, dtype);
+      setPath(working, path, value);
+    });
   }
 
   function onInput(e) {
@@ -515,7 +605,7 @@ export async function mountAddEdit(container, propertyId) {
 
   function onFieldBlur(e) {
     const el = e.target;
-    // Google Maps URL parsing on blur.
+    // Google Maps URL / coordinate parsing on blur.
     if (el && el.id === 'maps-url-input') {
       const raw = el.value;
       working.maps_url = raw;
@@ -528,7 +618,7 @@ export async function mountAddEdit(container, propertyId) {
         if (d.ok) {
           working.lat = d.lat;
           working.lng = d.lng;
-          mapsUrlHint = { text: `Coordinates: ${d.lat}, ${d.lng}`, type: 'note' };
+          mapsUrlHint = { text: `Pinned at ${d.lat}, ${d.lng}.`, type: 'note' };
         } else {
           working.lat = null;
           working.lng = null;
@@ -536,6 +626,14 @@ export async function mountAddEdit(container, propertyId) {
         }
       }
       render();
+      return;
+    }
+    // Reformat money fields with commas after blur (699900 → 699,900).
+    if (el && el.dataset && el.dataset.format === 'money') {
+      const value = getPath(working, el.dataset.path);
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        el.value = value.toLocaleString('en-US');
+      }
     }
   }
 
@@ -543,26 +641,26 @@ export async function mountAddEdit(container, propertyId) {
     const target = e.target.closest('button, a');
     if (!target) return;
 
-    if (target.id === 'add-edit-save-btn') {
+    if (target.closest('[data-save-btn]')) {
       e.preventDefault();
       doSave();
       return;
     }
-    if (target.id === 'add-edit-cancel-btn') {
+    if (target.closest('[data-cancel-btn]')) {
       e.preventDefault();
       window.location.hash = '#dashboard';
       return;
     }
-    if (target.id === 'add-edit-delete-btn') {
+    if (target.closest('[data-delete-btn]')) {
       e.preventDefault();
       doDelete();
       return;
     }
     if (target.classList.contains('star')) {
       e.preventDefault();
-      const container = target.closest('[data-star-path]');
-      if (!container) return;
-      const path = container.dataset.starPath;
+      const wrap = target.closest('[data-star-path]');
+      if (!wrap) return;
+      const path = wrap.dataset.starPath;
       const value = Number(target.dataset.starValue);
       const current = getPath(working, path);
       // Second click on the same star clears the rating.
@@ -575,6 +673,11 @@ export async function mountAddEdit(container, propertyId) {
   }
 
   async function doSave() {
+    // Fold in anything the user typed but hasn't blurred yet — otherwise
+    // clicking Save with focus still in the price field would validate
+    // against a stale null.
+    syncInputsToWorking();
+
     const errors = validate(working, stillGatheringInfo);
     if (errors.length > 0) {
       setSaveState('error', errors.join(' '));
@@ -600,8 +703,9 @@ export async function mountAddEdit(container, propertyId) {
     // time via calc.evaluateHardFilters — keep the persisted schema
     // clean unless a downstream view asks us to persist it.
 
-    const saveBtn = document.getElementById('add-edit-save-btn');
-    if (saveBtn) saveBtn.disabled = true;
+    // Both save buttons live in the DOM (header + footer). Disable both.
+    const saveBtns = container.querySelectorAll('[data-save-btn]');
+    saveBtns.forEach((b) => { b.disabled = true; });
     setSaveState('saving', 'Saving…');
 
     let nextArray;
@@ -618,7 +722,7 @@ export async function mountAddEdit(container, propertyId) {
       setTimeout(() => { window.location.hash = '#dashboard'; }, 700);
     } catch (e) {
       setSaveState('error', e.message || String(e));
-      if (saveBtn) saveBtn.disabled = false;
+      saveBtns.forEach((b) => { b.disabled = false; });
     }
   }
 

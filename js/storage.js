@@ -132,7 +132,7 @@ export function seedAssumptions() {
       family: { address: 'Aspen Hill, MD', maps_url: '', lat: 39.0784, lng: -77.0817 },
     },
     income: { monthly_net_va: 8038, md_penalty_monthly: 440, dc_penalty_monthly: 220 },
-    financing: { mortgage_rate_pct: 6.9, condo_rate_overlay_pct: 0.25 },
+    financing: { mortgage_rate_pct: 6.9, condo_rate_overlay_pct: 0.25, down_payment_default: 140000 },
     appreciation_pct: {
       nova_sfh: 4.0,
       nova_condo_th: 2.5,
@@ -153,6 +153,18 @@ export function seedAssumptions() {
 // placeholder. The Assumptions screen should surface a banner while
 // this is true.
 export const PLACEHOLDER_NET_INCOME = 8038;
+
+// In-place patch for older assumptions.json files that predate a schema
+// addition. Idempotent; safe to call every load. Any fresh install goes
+// through seedAssumptions() and skips these fills.
+export function migrateAssumptions(a) {
+  if (!a || typeof a !== 'object') return a;
+  if (!a.financing) a.financing = {};
+  if (a.financing.down_payment_default == null) {
+    a.financing.down_payment_default = 140000;
+  }
+  return a;
+}
 
 // --- Bootstrap ---
 

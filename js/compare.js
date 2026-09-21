@@ -187,12 +187,15 @@ function cellWithNote(value, note) {
 
 function renderFinancialSection(rows, assumptions) {
   const n = rows.length;
+  const globalDp = assumptions.financing?.down_payment_default ?? 140000;
   const dpText = (r) => {
     const price = r.p.financial?.price;
-    const dp = r.p.financial?.down_payment;
-    if (!price || !dp) return fmtMoney(dp);
+    const dpRaw = r.p.financial?.down_payment;
+    const dp = dpRaw != null ? dpRaw : globalDp;
+    const suffix = dpRaw == null ? ' <span class="note">(from Assumptions)</span>' : '';
+    if (!price) return fmtMoney(dp) + suffix;
     const pct = Math.round((dp / price) * 100);
-    return `${fmtMoney(dp)} (${pct}%)`;
+    return `${fmtMoney(dp)} (${pct}%)${suffix}`;
   };
   return [
     sectionRow('Financial (all-in, honest)', n),

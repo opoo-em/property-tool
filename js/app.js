@@ -1,4 +1,4 @@
-import { getPat, setPat, clearPat, testPat, bootstrap, loadAssumptions } from './storage.js';
+import { getPat, setPat, clearPat, testPat, bootstrap, loadAssumptions, migrateAssumptions } from './storage.js';
 import { LS_KEYS } from './config.js';
 import { mountAssumptions } from './assumptions.js';
 import { mountAddEdit } from './add-edit.js';
@@ -155,7 +155,7 @@ async function enterApp() {
   // Load assumptions once at app entry; views read from state.
   try {
     const { data, sha } = await loadAssumptions(state.pat);
-    state.assumptions = data;
+    state.assumptions = migrateAssumptions(data);
     state.assumptionsSha = sha;
   } catch (e) {
     console.error('Could not load assumptions', e);
