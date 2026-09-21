@@ -17,6 +17,10 @@ const DEFAULT_FILTER = {
   types: ['condo', 'townhouse', 'sfh'],
   states: ['VA', 'MD', 'DC'],
   hearted_only: false,
+  // Rejected properties are shown inline in the main table by default so
+  // she can see WHY each was rejected as she scans the list, and remember
+  // "this one doesn't fit because of X" while comparing across the rest.
+  include_rejected: true,
 };
 const DEFAULT_SORT = 'recent';
 
@@ -93,10 +97,12 @@ function typeBadgeClass(type) {
 
 // --- Filter / sort ---
 
-function passesFilter(property, filter) {
-  if (!filter.types.includes(property.type)) return false;
-  if (!filter.states.includes(property.state)) return false;
-  if (filter.hearted_only && !property.hearted) return false;
+function passesFilter(row, filter) {
+  const p = row.p;
+  if (!filter.types.includes(p.type)) return false;
+  if (!filter.states.includes(p.state)) return false;
+  if (filter.hearted_only && !p.hearted) return false;
+  if (!filter.include_rejected && row.c.isRejected) return false;
   return true;
 }
 
@@ -169,12 +175,16 @@ function renderFilterBar(filter, sortKey, counts) {
           <input type="checkbox" id="filter-hearted" ${filter.hearted_only ? 'checked' : ''}>
           Hearted only
         </label>
+        <label class="${filter.include_rejected ? 'checked' : ''}">
+          <input type="checkbox" id="filter-include-rejected" ${filter.include_rejected ? 'checked' : ''}>
+          Include rejected
+        </label>
       </div>
       <div class="filter-group">
         <span class="filter-label">Sort</span>
         <select id="sort-select">${sortOpts}</select>
       </div>
-      <span class="filter-count">${counts.active} shown · ${counts.selected} selected · ${counts.rejected} rejected</span>
+      <span class="filter-count">${counts.shown} shown · ${counts.selected} selected · ${counts.rejected} rejected</span>
     </div>
   `;
 }
@@ -182,18 +192,27 @@ function renderFilterBar(filter, sortKey, counts) {
 function renderRow(row, selectedSet) {
   const { p, c, financial, commute, fit, gut } = row;
   const isSelected = selectedSet.has(p.id);
+  const isRejected = c.isRejected;
   const warrant = (p.state === 'DC' && p.type === 'condo')
     ? '<br><span class="warrantability-note">⚠ warrantability watch</span>' : '';
   const addr = [p.address, p.state].filter(Boolean).join(', ');
   const priceCell = fmtPrice(p.financial?.price);
   const allInCell = (p.financial?.price ? fmtMoney(c.allInMonthly) : '—');
   const pctCell = fmtPct(c.pctNet);
+  const rejectPill = isRejected
+    ? `<div class="rejected-pill" title="Doesn't meet a hard filter">⊘ Rejected: ${escapeHtml(c.rejectionReasons.join('; '))}</div>`
+    : '';
+  const rowClass = [
+    isSelected ? 'selected' : '',
+    isRejected ? 'is-rejected' : '',
+  ].filter(Boolean).join(' ');
   return `
-    <tr class="${isSelected ? 'selected' : ''}" data-property-id="${escapeHtml(p.id)}">
+    <tr class="${rowClass}" data-property-id="${escapeHtml(p.id)}">
       <td><input type="checkbox" data-select-id="${escapeHtml(p.id)}" ${isSelected ? 'checked' : ''}></td>
       <td>
         <a class="prop-name" href="#add/${encodeURIComponent(p.id)}">${escapeHtml(p.nickname || '(untitled)')}</a>
         <br><span class="note">${escapeHtml(addr || '—')}</span>
+        ${rejectPill}
       </td>
       <td>
         <span class="type-badge ${typeBadgeClass(p.type)}">${escapeHtml(typeLabel(p.type))}${p.state ? ' · ' + escapeHtml(p.state) : ''}</span>
@@ -211,29 +230,6 @@ function renderRow(row, selectedSet) {
         <a class="btn small subtle" href="#add/${encodeURIComponent(p.id)}">Edit</a>
       </td>
     </tr>
-  `;
-}
-
-function renderRejectedSection(rejectedRows, collapsed) {
-  const chev = collapsed ? '▸' : '▾';
-  if (rejectedRows.length === 0) return '';
-  const rowsHtml = rejectedRows.map(({ p, c }) => `
-    <div class="rejected-row">
-      <div><strong>${escapeHtml(p.nickname || '(untitled)')}</strong> · ${fmtPrice(p.financial?.price)} · <span class="note">Failed: ${escapeHtml(c.rejectionReasons.join('; '))}</span></div>
-      <div><a class="btn small subtle" href="#add/${encodeURIComponent(p.id)}">Restore / Edit</a></div>
-    </div>
-  `).join('');
-  return `
-    <div class="rejected ${collapsed ? 'is-collapsed' : ''}">
-      <button type="button" class="r-title" id="toggle-rejected">
-        <span class="chev">${chev}</span>
-        Rejected — didn't meet a hard filter (${rejectedRows.length})
-      </button>
-      <div class="rejected-body" ${collapsed ? 'hidden' : ''}>
-        ${rowsHtml}
-        <div class="note" style="margin-top:6px;">Deal-breakers: covered+assigned parking, elevator (condo/TH), not ground floor (condo/TH), pet-friendly. Update a property's hard filters to bring it back.</div>
-      </div>
-    </div>
   `;
 }
 
@@ -310,9 +306,9 @@ export async function mountDashboard(container) {
   let filter = { ...DEFAULT_FILTER, ...(lsRead(LS_KEYS.UI_FILTER, {}) || {}) };
   filter.types = Array.isArray(filter.types) ? filter.types : DEFAULT_FILTER.types.slice();
   filter.states = Array.isArray(filter.states) ? filter.states : DEFAULT_FILTER.states.slice();
+  if (typeof filter.include_rejected !== 'boolean') filter.include_rejected = DEFAULT_FILTER.include_rejected;
   let sortKey = lsRead(LS_KEYS.UI_SORT, DEFAULT_SORT);
   if (!SORT_OPTIONS.some((o) => o.value === sortKey)) sortKey = DEFAULT_SORT;
-  let rejectedCollapsed = lsRead(LS_KEYS.UI_REJECTED_COLLAPSED, true);
   let scoredOpen = lsRead(LS_SCORED_OPEN, {}) || {};
   let selectedIds = loadSelected();
 
@@ -346,15 +342,16 @@ export async function mountDashboard(container) {
 
   function render() {
     const derivedAll = allProperties.map((p) => deriveRow(p, state.assumptions));
-    const active = derivedAll.filter((r) => !r.c.isRejected && passesFilter(r.p, filter));
-    const activeSorted = sortProperties(active, sortKey);
-    const rejected = derivedAll.filter((r) => r.c.isRejected);
+    const shown = derivedAll.filter((r) => passesFilter(r, filter));
+    const shownSorted = sortProperties(shown, sortKey);
+    const rejectedShown = shownSorted.filter((r) => r.c.isRejected);
+    const nonRejectedShown = shownSorted.filter((r) => !r.c.isRejected);
     const selectedSet = new Set(selectedIds);
 
     const counts = {
-      active: active.length,
+      shown: shownSorted.length,
       selected: selectedIds.length,
-      rejected: rejected.length,
+      rejected: rejectedShown.length,
     };
     const canCompare = selectedIds.length >= 2 && selectedIds.length <= 3;
 
@@ -367,9 +364,13 @@ export async function mountDashboard(container) {
         </div>
       `;
     } else {
+      // Stat summary is calculated from non-rejected only — averaging a
+      // property she's already ruled out into "avg all-in / mo" would
+      // muddy the number. Rejected rows stay visible in the table so she
+      // can still see them and remember why.
       body = `
         ${renderFilterBar(filter, sortKey, counts)}
-        ${activeSorted.length === 0 ? '<p class="empty-inline">No properties match the current filter.</p>' : `
+        ${shownSorted.length === 0 ? '<p class="empty-inline">No properties match the current filter.</p>' : `
           <table class="props">
             <thead>
               <tr>
@@ -386,12 +387,11 @@ export async function mountDashboard(container) {
                 <th style="width:130px;">Actions</th>
               </tr>
             </thead>
-            <tbody>${activeSorted.map((r) => renderRow(r, selectedSet)).join('')}</tbody>
+            <tbody>${shownSorted.map((r) => renderRow(r, selectedSet)).join('')}</tbody>
           </table>
-          ${renderStatusSummary(activeSorted)}
+          ${renderStatusSummary(nonRejectedShown)}
           ${renderScoredExplainers(scoredOpen)}
         `}
-        ${renderRejectedSection(rejected, rejectedCollapsed)}
       `;
     }
 
@@ -462,6 +462,12 @@ export async function mountDashboard(container) {
       render();
       return;
     }
+    if (el.id === 'filter-include-rejected') {
+      filter.include_rejected = el.checked;
+      lsWrite(LS_KEYS.UI_FILTER, filter);
+      render();
+      return;
+    }
     if (el.id === 'sort-select') {
       sortKey = el.value;
       lsWrite(LS_KEYS.UI_SORT, sortKey);
@@ -494,13 +500,6 @@ export async function mountDashboard(container) {
         scoredOpen[scoredEl.dataset.scoredKey] = scoredEl.open;
         lsWrite(LS_SCORED_OPEN, scoredOpen);
       }, 0);
-      return;
-    }
-
-    if (target.id === 'toggle-rejected' || target.closest('#toggle-rejected')) {
-      rejectedCollapsed = !rejectedCollapsed;
-      lsWrite(LS_KEYS.UI_REJECTED_COLLAPSED, rejectedCollapsed);
-      render();
       return;
     }
 

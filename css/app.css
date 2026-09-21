@@ -586,6 +586,27 @@ table.props td .note {
   margin-top: 2px;
 }
 
+/* Rejected rows: shown inline, visually demoted, with the reason under
+   the property name so she can see WHY at a glance. */
+.rejected-pill {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--error);
+  background: rgba(139, 26, 26, 0.08);
+  border: 1px solid rgba(139, 26, 26, 0.25);
+  border-radius: 2px;
+  letter-spacing: 0.02em;
+}
+table.props tr.is-rejected td { color: var(--ink-3); }
+table.props tr.is-rejected .prop-name { color: var(--ink-2); text-decoration-color: var(--ink-3); }
+table.props tr.is-rejected .type-badge { opacity: 0.7; }
+table.props tr.is-rejected .dots,
+table.props tr.is-rejected .stars { color: var(--ink-3); }
+table.props tr.is-rejected:hover { background: var(--bg-2); }
+table.props tr.is-rejected.selected { background: var(--bg-3); }
+
 .dots {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 1px;
