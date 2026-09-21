@@ -160,6 +160,24 @@ function renderWarrantabilityCallout(rows) {
   `;
 }
 
+// Callout listing any properties in the lineup that fail a hard filter,
+// so she doesn't forget mid-scroll that one of the columns is already a
+// no-go. Also gets a matching red pill under the property's header row.
+function renderRejectedCallout(rows) {
+  const rejected = rows.filter((r) => r.c.isRejected);
+  if (rejected.length === 0) return '';
+  const items = rejected.map((r) => `
+    <li><strong>${escapeHtml(r.p.nickname || '(untitled)')}</strong> — ${escapeHtml(r.c.rejectionReasons.join('; '))}</li>
+  `).join('');
+  return `
+    <div class="cross-callout rejected-callout">
+      <strong>⊘ ${rejected.length === 1 ? 'One property in this comparison was rejected' : `${rejected.length} properties in this comparison were rejected`} for a hard-filter reason.</strong>
+      Keeping them in the compare view is fine — sometimes it's useful to see the numbers on a property she's ruled out — but the deal-breaker still stands unless she updates the hard filters on the Add/Edit screen.
+      <ul>${items}</ul>
+    </div>
+  `;
+}
+
 // --- Row builders ---
 
 function sectionRow(label, colCount) {
@@ -372,11 +390,14 @@ function renderHeaderRow(rows) {
       ${rows.map((r) => {
         const warrant = (r.p.state === 'DC' && r.p.type === 'condo')
           ? '<br><span class="warrantability-note">⚠ warrantability watch</span>' : '';
+        const rejected = r.c.isRejected
+          ? `<br><span class="rejected-pill">⊘ Rejected: ${escapeHtml(r.c.rejectionReasons.join('; '))}</span>` : '';
         return `
           <td class="prop-header">
             ${escapeHtml(r.p.nickname || '(untitled)')}
             <br><span class="type-badge ${typeBadgeClass(r.p.type)}">${escapeHtml(typeStateLabel(r.p))}</span>
             ${warrant}
+            ${rejected}
           </td>
         `;
       }).join('')}
@@ -505,6 +526,7 @@ export async function mountCompare(container) {
           <h1>Property Comparison</h1>
           <p class="note">Generated ${new Date().toLocaleDateString()} · ${escapeHtml(summary)}</p>
         </div>
+        ${renderRejectedCallout(rows)}
         ${renderCrossTypeCallout(rows)}
         ${renderWarrantabilityCallout(rows)}
         ${renderGrid(rows, state.assumptions)}

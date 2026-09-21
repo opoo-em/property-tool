@@ -225,9 +225,11 @@ function renderRow(row, selectedSet) {
       <td class="dots" title="Commute: weekly hours (Tysons + Aspen Hill)">${dots(commute)}</td>
       <td class="dots" title="Fit: outdoor + condition + sqft">${dots(fit)}</td>
       <td class="stars">${escapeHtml(gutLabel(gut))}</td>
-      <td class="row-actions">
-        <button type="button" class="heart ${p.hearted ? 'on' : ''}" data-heart-id="${escapeHtml(p.id)}" aria-label="${p.hearted ? 'Unheart' : 'Heart'}">${p.hearted ? '♥' : '♡'}</button>
-        <a class="btn small subtle" href="#add/${encodeURIComponent(p.id)}">Edit</a>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="heart ${p.hearted ? 'on' : ''}" data-heart-id="${escapeHtml(p.id)}" aria-label="${p.hearted ? 'Unheart' : 'Heart'}">${p.hearted ? '♥' : '♡'}</button>
+          <a class="btn small subtle" href="#add/${encodeURIComponent(p.id)}">Edit</a>
+        </div>
       </td>
     </tr>
   `;
