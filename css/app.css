@@ -701,3 +701,89 @@ details.scored[open] summary { background: var(--bg-3); border-bottom: 1px solid
   border-bottom: 1px solid var(--line-2);
 }
 .rejected-row:last-child { border-bottom: none; }
+
+/* Compare grid */
+.compare-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.compare-grid th, .compare-grid td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line-2);
+  text-align: left;
+  vertical-align: top;
+}
+.compare-grid th.metric-label {
+  background: var(--bg-3);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: 180px;
+  vertical-align: middle;
+}
+.compare-grid th.metric-label .note {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-3);
+}
+.compare-grid td.prop-header {
+  background: var(--bg-3);
+  font-weight: 600;
+  font-size: 14px;
+}
+.compare-grid tr.section-row td {
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  font-weight: 600;
+}
+.compare-grid tr.strong-row td { background: var(--bg-2); }
+.compare-grid .note {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-style: italic;
+}
+.compare-grid .fail { color: var(--error); font-weight: 600; }
+
+.cross-callout {
+  background: var(--bg-2);
+  border-left: 3px solid var(--ink);
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.cross-callout strong { color: var(--ink); }
+.cross-callout.warrantability {
+  border-left-color: #8a5a12;
+  background: #fdf6e3;
+  color: #5a3d0a;
+}
+.cross-callout.warrantability strong { color: #5a3d0a; }
+
+.compare-print-header {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-2);
+  display: none;
+}
+.compare-print-header h1 { margin: 0 0 4px; font-size: 18px; }
+
+@media print {
+  .no-print { display: none !important; }
+  .top-nav { display: none !important; }
+  .compare-print-header { display: block; }
+  .screen-body { padding: 0; max-width: none; }
+  .compare-grid { font-size: 11px; }
+  .compare-grid th, .compare-grid td { padding: 5px 7px; }
+}

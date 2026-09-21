@@ -3,6 +3,7 @@ import { LS_KEYS } from './config.js';
 import { mountAssumptions } from './assumptions.js';
 import { mountAddEdit } from './add-edit.js';
 import { mountDashboard, updateCompareBadge } from './dashboard.js';
+import { mountCompare } from './compare.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -64,6 +65,10 @@ async function renderView() {
   }
   if (route.name === 'dashboard') {
     await mountDashboard(container);
+    return;
+  }
+  if (route.name === 'compare') {
+    await mountCompare(container);
     return;
   }
   mountStub(container, route.name);
