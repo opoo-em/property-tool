@@ -1,6 +1,8 @@
 import { getPat, setPat, clearPat, testPat, bootstrap, loadAssumptions } from './storage.js';
+import { LS_KEYS } from './config.js';
 import { mountAssumptions } from './assumptions.js';
 import { mountAddEdit } from './add-edit.js';
+import { mountDashboard, updateCompareBadge } from './dashboard.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -60,7 +62,21 @@ async function renderView() {
     await mountAddEdit(container, route.arg);
     return;
   }
+  if (route.name === 'dashboard') {
+    await mountDashboard(container);
+    return;
+  }
   mountStub(container, route.name);
+}
+
+// Read the persisted selection count and update the Compare (N) label on
+// initial nav render, before Dashboard mounts.
+function refreshCompareBadgeFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEYS.UI_SELECTED);
+    const arr = raw ? JSON.parse(raw) : [];
+    updateCompareBadge(Array.isArray(arr) ? arr.length : 0);
+  } catch { updateCompareBadge(0); }
 }
 
 function mountStub(container, route) {
@@ -134,6 +150,7 @@ async function enterApp() {
   } catch (e) {
     console.error('Could not load assumptions', e);
   }
+  refreshCompareBadgeFromStorage();
   await renderView();
 }
 
