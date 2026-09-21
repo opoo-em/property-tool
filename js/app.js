@@ -4,6 +4,7 @@ import { mountAssumptions } from './assumptions.js';
 import { mountAddEdit } from './add-edit.js';
 import { mountDashboard, updateCompareBadge } from './dashboard.js';
 import { mountCompare } from './compare.js';
+import { mountMap } from './map.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -69,6 +70,10 @@ async function renderView() {
   }
   if (route.name === 'compare') {
     await mountCompare(container);
+    return;
+  }
+  if (route.name === 'map') {
+    await mountMap(container);
     return;
   }
   mountStub(container, route.name);
