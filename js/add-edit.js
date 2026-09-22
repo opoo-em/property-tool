@@ -1,4 +1,4 @@
-import { state } from './app.js';
+import { state, consumePrefill } from './app.js';
 import { loadProperties, saveProperties } from './storage.js';
 import { diagnoseMapsUrl } from './url-parse.js';
 
@@ -115,6 +115,39 @@ function blankProperty() {
     created_at: null,
     updated_at: null,
   };
+}
+
+// Merge a prefill payload (from the Zillow bookmarklet) into a fresh
+// property. Only writes fields that are still null on `working` — the
+// prefill never overrides a value already there (defensive; a fresh
+// blankProperty is all-nulls, so in practice everything goes through).
+// Also seeds the nickname from the street portion of the address so
+// save doesn't require typing a name — she can still rename anytime.
+function applyPrefill(working, p) {
+  if (!p || typeof p !== 'object') return;
+  if (p.listing_url && !working.listing_url) working.listing_url = p.listing_url;
+  if (p.address && !working.address) working.address = p.address;
+  if (p.city && !working.city) working.city = p.city;
+  if (p.state && !working.state && /^(VA|MD|DC)$/.test(p.state)) working.state = p.state;
+  if (p.type && !working.type && /^(condo|townhouse|sfh)$/.test(p.type)) working.type = p.type;
+  if (typeof p.lat === 'number' && typeof p.lng === 'number' && working.lat == null) {
+    working.lat = p.lat;
+    working.lng = p.lng;
+    if (!working.maps_url) working.maps_url = p.maps_url || `${p.lat}, ${p.lng}`;
+  }
+  if (!working.nickname && p.address) {
+    // Street portion (part before first comma), trimmed. Reasonable
+    // default; user can rename in the field.
+    working.nickname = String(p.address).split(',')[0].trim();
+  }
+  const f = p.financial || {};
+  if (typeof f.price === 'number' && working.financial.price == null) working.financial.price = f.price;
+  if (typeof f.hoa_monthly === 'number' && working.financial.hoa_monthly == null) working.financial.hoa_monthly = f.hoa_monthly;
+  const ph = p.physical || {};
+  if (typeof ph.beds === 'number' && working.physical.beds == null) working.physical.beds = ph.beds;
+  if (typeof ph.baths === 'number' && working.physical.baths == null) working.physical.baths = ph.baths;
+  if (typeof ph.sqft === 'number' && working.physical.sqft == null) working.physical.sqft = ph.sqft;
+  if (typeof ph.year_built === 'number' && working.physical.year_built == null) working.physical.year_built = ph.year_built;
 }
 
 // Apply state-based auto-suggest defaults to any still-null fields.
@@ -313,6 +346,7 @@ function renderForm(working, isEdit, opts) {
     </div>
 
     <p class="intro-note">Nothing is required except a nickname (plus a price or "still gathering info" if you haven't got the number yet). Everything else can be filled in later.</p>
+    ${opts.prefilledFromZillow ? '<div class="banner"><strong>Prefilled from Zillow.</strong> Review each field, adjust anything the listing got wrong, then Save.</div>' : ''}
 
     <form id="add-edit-form" autocomplete="off" novalidate>
 
@@ -505,6 +539,23 @@ export async function mountAddEdit(container, propertyId) {
   let mapsUrlHint = null; // { text, type: 'note' | 'error' }
   let saveStatus = 'idle';
   let saveMessage = '';
+  let prefilledFromZillow = false;
+
+  // If the app was opened via the bookmarklet (`?prefill=…`), fold the
+  // extracted fields into the blank property, then run state-based
+  // defaults so tax rate / insurance defaults come along for the ride.
+  if (!isEdit) {
+    const prefill = consumePrefill();
+    if (prefill) {
+      applyPrefill(working, prefill);
+      applyStateDefaults(working);
+      if (working.maps_url) {
+        const d = diagnoseMapsUrl(working.maps_url);
+        if (d.ok) mapsUrlHint = { text: `Pinned at ${d.lat}, ${d.lng}.`, type: 'note' };
+      }
+      prefilledFromZillow = true;
+    }
+  }
 
   container.addEventListener('change', onFieldChange, { signal });
   container.addEventListener('focusout', onFieldBlur, { signal });
@@ -513,7 +564,7 @@ export async function mountAddEdit(container, propertyId) {
 
   function render() {
     container.innerHTML = renderForm(working, isEdit, {
-      stillGatheringInfo, mapsUrlHint, saveStatus, saveMessage,
+      stillGatheringInfo, mapsUrlHint, saveStatus, saveMessage, prefilledFromZillow,
     });
   }
 

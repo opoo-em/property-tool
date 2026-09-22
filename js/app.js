@@ -22,6 +22,33 @@ export const state = {
   assumptionsSha: null,
 };
 
+// --- Prefill (from the "Add to Property Tool" bookmarklet) ---
+// The bookmarklet (see /bookmarklet/) opens the app at
+// `.../?prefill=<encoded JSON>#add`. We stash it on boot, clean the URL
+// so refresh doesn't re-apply it, and hand it to mountAddEdit once.
+
+let pendingPrefill = null;
+
+function extractPrefillFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('prefill');
+    if (!raw) return;
+    pendingPrefill = JSON.parse(raw);
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, '', cleanUrl);
+  } catch (e) {
+    console.warn('Ignoring malformed prefill param:', e);
+    pendingPrefill = null;
+  }
+}
+
+export function consumePrefill() {
+  const p = pendingPrefill;
+  pendingPrefill = null;
+  return p;
+}
+
 // --- Router ---
 
 const ROUTES = ['dashboard', 'map', 'add', 'compare', 'assumptions'];
@@ -225,6 +252,7 @@ function attachWizardHandlers() {
 // --- Boot ---
 
 async function boot() {
+  extractPrefillFromUrl();
   attachWizardHandlers();
   window.addEventListener('hashchange', () => { renderView(); });
 

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Install the Zillow → Property Tool bookmarklet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ink: #111;
+    --ink-2: #333;
+    --ink-3: #666;
+    --line: #ddd;
+    --bg: #fff;
+    --bg-2: #f6f6f4;
+    --accent: #1b5e88;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.55; }
+  .wrap { max-width: 720px; margin: 40px auto; padding: 0 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px 0; }
+  h2 { font-size: 15px; margin: 32px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-3); }
+  p { color: var(--ink-2); }
+  ol, ul { color: var(--ink-2); }
+  ol li, ul li { margin: 6px 0; }
+  .sub { color: var(--ink-3); margin-top: 4px; }
+  .drag-target {
+    display: inline-block;
+    margin: 18px 0 6px 0;
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff !important;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .drag-target:active { cursor: grabbing; }
+  .drag-target[aria-disabled="true"] { background: #999; cursor: not-allowed; }
+  .note { background: var(--bg-2); border-left: 3px solid var(--line); padding: 10px 14px; margin: 14px 0; font-size: 13px; color: var(--ink-2); }
+  .note-error { border-left-color: #a02020; }
+  code { background: var(--bg-2); padding: 2px 5px; border-radius: 3px; font-size: 13px; }
+  kbd { background: var(--bg-2); border: 1px solid var(--line); border-bottom-width: 2px; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
+  .app-link { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Install: <em>Add to Property Tool</em></h1>
+<p class="sub">A bookmark you click while on a Zillow listing. It reads what it can from the page, opens the Property Tool in a new tab, and pre-fills the Add Property form so you only have to review and Save.</p>
+
+<h2>Step 1 — Show your bookmarks bar</h2>
+<ul>
+  <li><strong>Chrome / Edge:</strong> <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Mac: <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>)</li>
+  <li><strong>Firefox:</strong> Right-click empty area near the tabs → <em>Bookmarks Toolbar</em> → <em>Always Show</em></li>
+  <li><strong>Safari:</strong> View menu → <em>Show Favorites Bar</em></li>
+</ul>
+
+<h2>Step 2 — Drag this button up to your bookmarks bar</h2>
+<a id="drag-btn" class="drag-target" href="#" aria-disabled="true" draggable="true">Add to Property Tool</a>
+<p class="sub">If dragging doesn't work in your browser, right-click the button → <em>Bookmark link…</em> (or "Add to bookmarks") and save it to your bookmarks bar.</p>
+
+<div id="load-status" class="note">Loading the bookmarklet…</div>
+
+<h2>Step 3 — Use it</h2>
+<ol>
+  <li>Open any Zillow listing page (a <code>/homedetails/…</code> URL).</li>
+  <li>Click the <em>Add to Property Tool</em> bookmark in your bar.</li>
+  <li>A new tab opens the Property Tool at Add Property, with the fields it could read from the listing already filled in. Review, tweak, hit Save.</li>
+</ol>
+
+<h2>What it fills in</h2>
+<ul>
+  <li><strong>Basics:</strong> address, city, state, listing URL, property type, latitude/longitude (which becomes the map pin)</li>
+  <li><strong>Financial:</strong> price, monthly HOA fee</li>
+  <li><strong>Physical:</strong> beds, baths, square feet, year built</li>
+</ul>
+<p>Nickname is seeded from the street address so Save works right away — rename it to whatever's easier to remember. Everything gut-check, commute time, and hard-filter is still up to you.</p>
+
+<h2>What can go wrong</h2>
+<ul>
+  <li><strong>Some fields come out blank.</strong> Zillow changes their page shape now and then. Fill the missing ones in manually and let Aly know — the bookmarklet's extractor can be updated.</li>
+  <li><strong>New tab is blocked.</strong> Allow pop-ups from <code>zillow.com</code>, or click the notification in the address bar.</li>
+  <li><strong>You're not signed in to the app.</strong> The bookmarklet opens the app in a new tab. If it's your first time on that browser, the setup wizard runs first — finish it, then click the bookmarklet again.</li>
+  <li><strong>It only works on listing pages.</strong> Search results, saved-home lists, and rental pages don't have a single property to extract — nothing will pre-fill.</li>
+</ul>
+
+<hr>
+<p class="sub">Bookmarklet source: <a class="app-link" href="./zillow-extract.js">zillow-extract.js</a>. Runs entirely on the Zillow tab in your own browser — never sends listing data anywhere except into your own Property Tool tab.</p>
+
+</div>
+
+<script>
+  // Load the minified bookmarklet URL from the sibling .txt file and
+  // wire it into the drag button. Inlining ~9 KB of URL-encoded JS in
+  // the HTML would work too, but fetching keeps this page in sync with
+  // whatever the build script last produced.
+  (async function () {
+    const btn = document.getElementById('drag-btn');
+    const status = document.getElementById('load-status');
+    try {
+      const res = await fetch('./zillow-extract.min.txt', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const url = (await res.text()).trim();
+      if (!url.startsWith('javascript:')) throw new Error('unexpected content');
+      btn.setAttribute('href', url);
+      btn.removeAttribute('aria-disabled');
+      status.textContent = 'Bookmarklet ready — drag the button above.';
+      status.className = 'note';
+    } catch (e) {
+      status.className = 'note note-error';
+      status.innerHTML = 'Could not load the bookmarklet automatically (' + String(e && e.message || e) + '). ' +
+        'Copy the contents of <a href="./zillow-extract.min.txt">zillow-extract.min.txt</a> ' +
+        'and manually create a bookmark whose URL is that whole string.';
+    }
+  })();
+</script>
+
+</body>
+</html>
